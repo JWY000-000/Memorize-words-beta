@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Memorizer - Beta Test</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f2f5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .message {
+            color: #808080;
+            font-size: 24px;
+            text-align: center;
+            margin-top: 50px;
+            margin-bottom: 50px;
+        }
+        .main-box {
+            background-color: white;
+            border: 1px solid #000;
+            border-radius: 10px;
+            width: 400px;
+            height: 300px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 32px;
+            text-align: center;
+            padding: 20px;
+            transition: background-color 0.5s ease;
+            position: relative;
+        }
+        .speaker-button {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 24px;
+            color: #666;
+            transition: color 0.3s ease;
+            z-index: 1;
+        }
+        .speaker-button:hover {
+            color: #333;
+        }
+        .input-container {
+            display: flex;
+            align-items: center;
+            background-color: white;
+            border: 1px solid #000;
+            border-radius: 10px;
+            padding: 5px 10px;
+            width: 300px;
+            margin-top: 20px;
+        }
+        .input-box {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 16px;
+            padding: 5px;
+        }
+        .submit-button {
+            background-color: #f0f2f5;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        .submit-button:hover {
+            background-color: #e0e2e5;
+        }
+        .back-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #dc3545;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            border: 1px solid #000;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .back-button:hover {
+            background-color: #c82333;
+        }
+        .correct {
+            background-color: #28a745;
+            color: white;
+        }
+        .incorrect {
+            background-color: #dc3545;
+            color: white;
+        }
+        .correct-answer {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 10px;
+            text-align: center;
+            width: 100%;
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="message">베타 테스트 페이지입니다.</div>
+    <div class="main-box" id="wordBox">
+        <button class="speaker-button" onclick="speakWord()">🔊</button>
+        <div id="wordContent"></div>
+        <div id="correctAnswer" class="correct-answer"></div>
+    </div>
+    <div class="input-container">
+        <input type="text" class="input-box" id="userInput" placeholder="입력하세요...">
+        <button class="submit-button" onclick="handleSubmit()">입력</button>
+    </div>
+    <button class="back-button" onclick="goBack()">Back</button>
+
+    <script>
+        let wordMeanings = [];
+        let currentWord = null;
+        let isEnglish = true;
+        let answeredWords = new Set();
+
+        function speakWord() {
+            if (!currentWord) return;
+            
+            const textToSpeak = isEnglish ? currentWord.word : currentWord.meaning;
+            const utterance = new SpeechSynthesisUtterance(textToSpeak);
+            utterance.lang = isEnglish ? 'en-US' : 'ko-KR';
+            speechSynthesis.speak(utterance);
+        }
+
+        window.onload = function() {
+            wordMeanings = JSON.parse(localStorage.getItem('wordMeanings') || '[]');
+            showNextWord();
+        }
+
+        function showNextWord() {
+            const availableWords = wordMeanings.filter(word => {
+                const wordKey = isEnglish ? word.word : word.meaning;
+                return !answeredWords.has(wordKey);
+            });
+
+            const randomIndex = Math.floor(Math.random() * availableWords.length);
+            currentWord = availableWords[randomIndex];
+            const wordContent = document.getElementById('wordContent');
+            wordContent.textContent = isEnglish ? currentWord.word : currentWord.meaning;
+            const wordBox = document.getElementById('wordBox');
+            wordBox.style.backgroundColor = 'white';
+            wordBox.style.color = 'black';
+            wordBox.classList.remove('correct', 'incorrect');
+        }
+
+        function handleSubmit() {
+            const input = document.getElementById('userInput');
+            const answer = input.value.trim();
+            
+            if (answer === '') return;
+
+            const correctAnswer = isEnglish ? currentWord.meaning : currentWord.word;
+            const isCorrect = answer.toLowerCase() === correctAnswer.toLowerCase();
+
+            const wordBox = document.getElementById('wordBox');
+            const correctAnswerDiv = document.getElementById('correctAnswer');
+            
+            wordBox.style.backgroundColor = isCorrect ? '#28a745' : '#dc3545';
+            wordBox.style.color = 'white';
+
+            if (isCorrect) {
+                answeredWords.add(isEnglish ? currentWord.word : currentWord.meaning);
+                correctAnswerDiv.textContent = '';
+            } else {
+                correctAnswerDiv.textContent = `정답: ${correctAnswer}`;
+            }
+
+            setTimeout(() => {
+                isEnglish = !isEnglish;
+                showNextWord();
+                input.value = '';
+                correctAnswerDiv.textContent = '';
+            }, isCorrect ? 1000 : 3000);
+        }
+
+        function goBack() {
+            window.location.href = 'test.html';
+        }
+
+        // Enter 키 이벤트 처리
+        document.getElementById('userInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                handleSubmit();
+            }
+        });
+    </script>
+</body>
+</html> 
