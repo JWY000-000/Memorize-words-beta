@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Memorizer - Input</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f2f5;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 600px;
+        }
+        .input-area {
+            margin-bottom: 1rem;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            resize: vertical;
+            margin-bottom: 1rem;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .input-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+        .loading {
+            display: none;
+            margin-top: 1rem;
+            text-align: center;
+            color: #666;
+        }
+        .progress-container {
+            width: 100%;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            margin-top: 1rem;
+            height: 13px;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 13px;
+            background-color: #4CAF50;
+            border-radius: 5px;
+            transition: width 0.3s ease;
+        }
+        .progress-text {
+            text-align: center;
+            margin-top: 0.3rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        .button-container {
+            display: flex;
+            gap: 10px;
+            margin-top: 1rem;
+        }
+        #fileInput {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Word Memorizer</h1>
+        <div class="input-area">
+            <label class="input-label">Enter words (separated by spaces or commas)</label>
+            <textarea id="wordInput" placeholder="Enter words (separated by spaces or commas)"></textarea>
+            <div class="button-container">
+                <button onclick="startMemorizing()">Start</button>
+                <button onclick="document.getElementById('fileInput').click()">Load</button>
+                <input type="file" id="fileInput" accept=".json" onchange="loadWords(event)">
+            </div>
+            <div id="loading" class="loading">
+                <div class="progress-container">
+                    <div id="progressBar" class="progress-bar"></div>
+                </div>
+                <div id="progressText" class="progress-text">0%</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function translateWord(word, retryCount = 3) {
+            for (let i = 0; i < retryCount; i++) {
+                try {
+                    const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=${encodeURIComponent(word)}`);
+                    if (!response.ok) {
+                        throw new Error('번역 서버 응답 오류');
+                    }
+                    const data = await response.json();
+                    if (!data || !data[0] || !data[0][0] || !data[0][0][0]) {
+                        throw new Error('번역 데이터 형식 오류');
+                    }
+                    return data[0][0][0];
+                } catch (error) {
+                    console.error(`Translation attempt ${i + 1} failed:`, error);
+                    if (i === retryCount - 1) {
+                        return '(번역 실패)';
+                    }
+                    // 재시도 전에 잠시 대기
+                    await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+                }
+            }
+            return '(번역 실패)';
+        }
+
+        async function getDefinition(word, retryCount = 3) {
+            for (let i = 0; i < retryCount; i++) {
+                try {
+                    const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+                    if (!response.ok) {
+                        throw new Error('사전 API 응답 오류');
+                    }
+                    const data = await response.json();
+                    if (!data || !data[0] || !data[0].meanings || !data[0].meanings[0] || !data[0].meanings[0].definitions || !data[0].meanings[0].definitions[0]) {
+                        throw new Error('사전 데이터 형식 오류');
+                    }
+                    return data[0].meanings[0].definitions[0].definition;
+                } catch (error) {
+                    console.error(`Definition attempt ${i + 1} failed:`, error);
+                    if (i === retryCount - 1) {
+                        return '(정의를 찾을 수 없음)';
+                    }
+                    // 재시도 전에 잠시 대기
+                    await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+                }
+            }
+            return '(정의를 찾을 수 없음)';
+        }
+
+        async function startMemorizing() {
+            const input = document.getElementById('wordInput').value;
+            const words = input.split(/[\s,]+/).filter(word => word.trim() !== '');
+            
+            if (words.length === 0) {
+                alert('단어를 입력해주세요.');
+                return;
+            }
+
+            const loadingDiv = document.getElementById('loading');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            loadingDiv.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+
+            try {
+                const wordMeanings = [];
+                const totalWords = words.length;
+                const totalSteps = totalWords * 2; // 번역과 정의 각각에 대해 진행률 증가
+                let currentStep = 0;
+
+                for (let i = 0; i < words.length; i++) {
+                    const word = words[i];
+                    
+                    // 번역 진행률 업데이트
+                    currentStep++;
+                    const progress = Math.floor((currentStep / totalSteps) * 100);
+                    progressBar.style.width = `${progress}%`;
+                    progressText.textContent = `${progress}%`;
+                    
+                    const meaning = await translateWord(word);
+                    
+                    // 정의 진행률 업데이트
+                    currentStep++;
+                    const progress2 = Math.floor((currentStep / totalSteps) * 100);
+                    progressBar.style.width = `${progress2}%`;
+                    progressText.textContent = `${progress2}%`;
+                    
+                    const definition = await getDefinition(word);
+                    
+                    wordMeanings.push({
+                        word: word,
+                        meaning: meaning || '(번역 실패)',
+                        definition: definition || '(정의를 찾을 수 없음)'
+                    });
+
+                    // API 호출 간 딜레이 추가
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+
+                if (wordMeanings.length === 0) {
+                    throw new Error('처리된 단어가 없습니다.');
+                }
+
+                // 모든 단어가 처리되면 100% 표시
+                progressBar.style.width = '100%';
+                progressText.textContent = '100%';
+                
+                // 잠시 100% 상태를 보여주고 이동
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                localStorage.setItem('wordMeanings', JSON.stringify(wordMeanings));
+                window.location.href = 'memorize.html';
+            } catch (error) {
+                console.error('Error:', error);
+                progressBar.style.backgroundColor = '#dc3545';
+                progressText.textContent = '오류가 발생했습니다. 다시 시도해주세요.';
+                progressText.style.color = '#dc3545';
+            }
+        }
+
+        async function loadWords(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const wordMeanings = JSON.parse(e.target.result);
+                    localStorage.setItem('wordMeanings', JSON.stringify(wordMeanings));
+                    window.location.href = 'memorize.html';
+                } catch (error) {
+                    console.error('Error loading file:', error);
+                    alert('파일을 불러오는 중 오류가 발생했습니다.');
+                }
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html> 
